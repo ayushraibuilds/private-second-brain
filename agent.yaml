@@ -1,0 +1,27 @@
+project: Private AI Second Brain
+description: A completely offline, local-first personal knowledge management system built with Next.js, FastAPI, ChromaDB, and Ollama.
+
+team:
+  manager:
+    name: LeadArchitect
+    role: Orchestrates the monorepo structure and ensures zero-cloud compliance.
+    responsibilities:
+      - Enforce strict ZERO cloud API constraints (no OpenAI, no Anthropic).
+      - Manage monorepo architecture (/backend, /frontend, /vault).
+      - Delegate tasks to sub-agents and ensure integration between frontend and backend.
+      
+  sub_agents:
+    - name: LocalAIEngineer
+      role: Sets up the FastAPI server, ChromaDB vector store, and local Ollama routing for LLM and embeddings.
+      responsibilities:
+        - Initialize Python FastAPI environment and dependencies.
+        - Create endpoint POST /api/notes/save to save raw Markdown to /vault and update ChromaDB with nomic-embed-text.
+        - Create endpoint POST /api/chat to perform RAG against ChromaDB and stream response from llama3 via Ollama.
+        
+    - name: FrontendCraftsman
+      role: Scaffolds the Next.js UI, featuring a dual-pane layout: a Markdown note editor on the left, and a localized AI chat interface on the right.
+      responsibilities:
+        - Scaffold Next.js (App Router), Tailwind CSS, and shadcn/ui.
+        - Build the LifeOS dashboard layout (dual-pane).
+        - Develop a Markdown capture zone for daily thoughts.
+        - Develop a chat interface that sends queries to the local Python backend and streams the response.

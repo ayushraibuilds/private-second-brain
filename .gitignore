@@ -1,0 +1,21 @@
+# Python
+backend/venv/
+backend/__pycache__/
+*.pyc
+
+# Node
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+
+# Local Vault & Vector DB
+vault/.chroma/
+# Don't track personal markdown notes in git
+vault/*.md
+
+# Mac
+.DS_Store
+
+# Env
+.env
