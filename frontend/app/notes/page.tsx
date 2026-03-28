@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Search, Folder, FileText, Plus, MessageSquare, Maximize2, X, Send, Bot, User, Hash } from 'lucide-react';
 import Link from 'next/link';
+import { GlassEmptyState } from '@/components/ui/GlassEmptyState';
 
 export default function NotesApp() {
   const [selectedNote, setSelectedNote] = useState<number | null>(1);
@@ -20,7 +21,7 @@ export default function NotesApp() {
     <div className="flex h-screen bg-[#0f0f11] text-slate-300 font-sans overflow-hidden">
       
       {/* Sidebar */}
-      <aside className="w-72 border-r border-[#222] bg-[#141417] flex flex-col">
+      <aside className="w-72 border-r border-white/5 bg-black/40 backdrop-blur-2xl flex flex-col z-10">
         <div className="p-4 border-b border-[#222] flex items-center justify-between">
           <Link href="/" className="font-bold text-white flex items-center gap-2">
             <span className="w-6 h-6 bg-purple-600 rounded flex items-center justify-center text-xs">SB</span> SecondBrain
@@ -65,8 +66,9 @@ export default function NotesApp() {
       </aside>
 
       {/* Main Editor Area */}
-      <main className="flex-1 flex flex-col relative">
-        <header className="h-14 border-b border-[#222] flex items-center justify-between px-6 bg-[#0f0f11]">
+      <main className="flex-1 flex flex-col relative bg-[url('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564&auto=format&fit=crop')] bg-cover bg-center">
+        <div className="absolute inset-0 bg-black/80 backdrop-blur-[80px] z-0"></div>
+        <header className="h-14 border-b border-white/5 flex items-center justify-between px-6 bg-black/20 backdrop-blur-md z-10">
           <div className="font-medium text-slate-200">{selectedNote ? 'Editing Note' : 'No note selected'}</div>
           <div className="flex items-center gap-2">
             <button 
@@ -78,7 +80,7 @@ export default function NotesApp() {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-12">
+        <div className="flex-1 overflow-y-auto p-12 z-10">
           {selectedNote ? (
             <div className="max-w-3xl mx-auto space-y-6">
               <input 
@@ -94,16 +96,19 @@ export default function NotesApp() {
               />
             </div>
           ) : (
-            <div className="w-full h-full flex flex-col items-center justify-center text-slate-600">
-               <FileText className="w-12 h-12 mb-4 opacity-50" />
-               <p>Select a note to start editing</p>
+            <div className="w-full h-full flex flex-col items-center justify-center pt-24 text-slate-600">
+               <GlassEmptyState 
+                 icon={<FileText className="w-10 h-10" />} 
+                 title="No Note Selected" 
+                 description="Select a note from the sidebar to begin editing, or create a new one. Your local second brain is ready." 
+               />
             </div>
           )}
         </div>
 
         {/* Global Chat / Ask AI Panel */}
         {isChatOpen && (
-          <div className="absolute right-0 top-14 bottom-0 w-96 border-l border-[#222] bg-[#141417] flex flex-col shadow-2xl animate-in slide-in-from-right-8 duration-200">
+          <div className="absolute right-0 top-14 bottom-0 w-96 border-l border-white/10 bg-black/40 backdrop-blur-3xl flex flex-col shadow-2xl animate-in slide-in-from-right-8 duration-200 z-20">
             <div className="p-4 border-b border-[#222] flex items-center justify-between">
               <div className="flex items-center gap-2 font-bold text-slate-200">
                 <Bot className="w-4 h-4 text-purple-500" /> SecondBrain AI

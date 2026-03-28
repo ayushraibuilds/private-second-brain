@@ -1,4 +1,4 @@
-import { ChangeEvent, KeyboardEvent, useRef, useState } from "react";
+import { ChangeEvent, KeyboardEvent, useRef, useState, useEffect } from "react";
 import { FilePenLine, FileUp, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -57,6 +57,17 @@ export function NoteEditor({
       onSave();
     }
   };
+
+  // Debounced Auto-save
+  useEffect(() => {
+    if (!title.trim() && !content.trim()) return;
+
+    const timer = setTimeout(() => {
+      onSave();
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [title, content, onSave]);
 
   const handleUploadClick = () => {
     if (isUploading) {
