@@ -1,498 +1,86 @@
-"use client";
+import Link from 'next/link';
+import { BrainCircuit, Lock, Search, Zap, ArrowRight, ShieldCheck } from 'lucide-react';
 
-import { FormEvent, useEffect, useRef, useState } from "react";
-import { Bot, Database, HardDriveDownload, NotebookTabs } from "lucide-react";
-
-import { Button } from "@/components/ui/button";
-import { NoteEditor } from "@/components/life-os/note-editor";
-import { ChatInterface } from "@/components/life-os/chat-interface";
-import { ToastStack } from "@/components/life-os/toast-stack";
-import type { ChatMessage, Toast } from "@/components/life-os/types";
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-const NOTE_DRAFT_STORAGE_KEY = "life-os-note-draft";
-const CHAT_HISTORY_STORAGE_KEY = "life-os-chat-history";
-
-type MobilePane = "capture" | "chat";
-type HealthStatus = "checking" | "online" | "offline";
-
-type StreamEvent =
-  | { type: "status"; message: string }
-  | { type: "sources"; sources: string[] }
-  | { type: "token"; token: string }
-  | { type: "done" };
-
-function createToast(title: string, tone: Toast["tone"], description?: string): Toast {
-  return {
-    id: crypto.randomUUID(),
-    title,
-    description,
-    tone,
-  };
-}
-
-function createMessage(message: Omit<ChatMessage, "id">): ChatMessage {
-  return {
-    id: crypto.randomUUID(),
-    ...message,
-  };
-}
-
-function parseStreamPayload(payload: string): StreamEvent | null {
-  try {
-    return JSON.parse(payload) as StreamEvent;
-  } catch {
-    return null;
-  }
-}
-
-export default function LifeOSPage() {
-  const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
-  const [query, setQuery] = useState("");
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isChatting, setIsChatting] = useState(false);
-  const [mobilePane, setMobilePane] = useState<MobilePane>("capture");
-  const [toasts, setToasts] = useState<Toast[]>([]);
-  const [hasHydrated, setHasHydrated] = useState(false);
-  const [healthStatus, setHealthStatus] = useState<HealthStatus>("checking");
-
-  const bottomRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    try {
-      const savedDraft = localStorage.getItem(NOTE_DRAFT_STORAGE_KEY);
-      const savedHistory = localStorage.getItem(CHAT_HISTORY_STORAGE_KEY);
-
-      if (savedDraft) {
-        const draft = JSON.parse(savedDraft) as { title?: string; content?: string };
-        setTitle(draft.title ?? "");
-        setContent(draft.content ?? "");
-      }
-
-      if (savedHistory) {
-        const history = JSON.parse(savedHistory) as ChatMessage[];
-        setMessages(Array.isArray(history) ? history : []);
-      }
-    } catch (error) {
-      console.error("Failed to restore local state", error);
-    } finally {
-      setHasHydrated(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!hasHydrated) {
-      return;
-    }
-
-    localStorage.setItem(
-      NOTE_DRAFT_STORAGE_KEY,
-      JSON.stringify({
-        title,
-        content,
-      }),
-    );
-  }, [title, content, hasHydrated]);
-
-  useEffect(() => {
-    if (!hasHydrated) {
-      return;
-    }
-
-    localStorage.setItem(CHAT_HISTORY_STORAGE_KEY, JSON.stringify(messages.slice(-20)));
-  }, [messages, hasHydrated]);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages, isChatting]);
-
-  useEffect(() => {
-    if (!toasts.length) {
-      return;
-    }
-
-    const timers = toasts.map((toast) =>
-      window.setTimeout(() => {
-        setToasts((current) => current.filter((entry) => entry.id !== toast.id));
-      }, 3500),
-    );
-
-    return () => {
-      timers.forEach((timer) => window.clearTimeout(timer));
-    };
-  }, [toasts]);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const pollHealth = async () => {
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/health`, {
-          cache: "no-store",
-        });
-
-        if (!response.ok) {
-          throw new Error(`Health check failed with status ${response.status}`);
-        }
-
-        const payload = (await response.json()) as {
-          status?: string;
-          engine?: string;
-        };
-
-        if (isMounted) {
-          setHealthStatus(
-            payload.status === "ok" && payload.engine === "online"
-              ? "online"
-              : "offline",
-          );
-        }
-      } catch {
-        if (isMounted) {
-          setHealthStatus("offline");
-        }
-      }
-    };
-
-    void pollHealth();
-    const intervalId = window.setInterval(() => {
-      void pollHealth();
-    }, 10000);
-
-    return () => {
-      isMounted = false;
-      window.clearInterval(intervalId);
-    };
-  }, []);
-
-  const pushToast = (toast: Toast) => {
-    setToasts((current) => [...current, toast]);
-  };
-
-  const handleSave = async () => {
-    if (!title.trim() || !content.trim() || isSaving) {
-      return;
-    }
-
-    setIsSaving(true);
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/notes/save`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          title: title.trim(),
-          content,
-        }),
-      });
-
-      const payload = (await response.json()) as {
-        file?: string;
-        chunks_embedded?: number;
-      };
-
-      if (!response.ok) {
-        throw new Error("The local vault refused the save request.");
-      }
-
-      setTitle("");
-      setContent("");
-      pushToast(
-        createToast(
-          "Note saved to local vault",
-          "success",
-          `${payload.file ?? "Untitled note"} embedded in ${payload.chunks_embedded ?? 0} chunk(s).`,
-        ),
-      );
-    } catch (error) {
-      console.error(error);
-      pushToast(
-        createToast(
-          "Save failed",
-          "error",
-          error instanceof Error ? error.message : "Unexpected local save error.",
-        ),
-      );
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleChatSubmit = async (event?: FormEvent<HTMLFormElement>) => {
-    event?.preventDefault();
-
-    const prompt = query.trim();
-    if (!prompt || isChatting) {
-      return;
-    }
-
-    const assistantId = crypto.randomUUID();
-
-    setMessages((current) => [
-      ...current,
-      createMessage({ role: "user", text: prompt, status: "complete" }),
-      {
-        id: assistantId,
-        role: "assistant",
-        text: "",
-        sources: [],
-        status: "streaming",
-      },
-    ]);
-    setQuery("");
-    setIsChatting(true);
-    setMobilePane("chat");
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/chat`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ query: prompt }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Chat request failed with status ${response.status}`);
-      }
-
-      if (!response.body) {
-        throw new Error("Streaming response body is missing.");
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        buffer += decoder.decode(value, { stream: !done });
-
-        let boundaryIndex = buffer.indexOf("\n\n");
-        while (boundaryIndex !== -1) {
-          const rawEvent = buffer.slice(0, boundaryIndex);
-          buffer = buffer.slice(boundaryIndex + 2);
-
-          const payload = rawEvent
-            .split("\n")
-            .filter((line) => line.startsWith("data:"))
-            .map((line) => line.slice(5).trimStart())
-            .join("\n");
-
-          const eventPayload = parseStreamPayload(payload);
-
-          if (eventPayload?.type === "sources") {
-            setMessages((current) =>
-              current.map((message) =>
-                message.id === assistantId
-                  ? { ...message, sources: eventPayload.sources }
-                  : message,
-              ),
-            );
-          }
-
-          if (eventPayload?.type === "status") {
-            setMessages((current) =>
-              current.map((message) =>
-                message.id === assistantId
-                  ? { ...message, agentStatus: eventPayload.message }
-                  : message,
-              ),
-            );
-          }
-
-          if (eventPayload?.type === "token") {
-            setMessages((current) =>
-              current.map((message) =>
-                message.id === assistantId
-                  ? { ...message, text: `${message.text}${eventPayload.token}` }
-                  : message,
-              ),
-            );
-          }
-
-          if (eventPayload?.type === "done") {
-            setMessages((current) =>
-              current.map((message) =>
-                message.id === assistantId
-                  ? { ...message, status: "complete" }
-                  : message,
-              ),
-            );
-          }
-
-          boundaryIndex = buffer.indexOf("\n\n");
-        }
-
-        if (done) {
-          break;
-        }
-      }
-    } catch (error) {
-      console.error(error);
-      setMessages((current) =>
-        current.map((message) =>
-          message.id === assistantId
-            ? {
-                ...message,
-                text:
-                  "I couldn't complete that request against the local model.\n\nCheck that FastAPI and Ollama are both running, then try again.",
-                status: "error",
-              }
-            : message,
-        ),
-      );
-      pushToast(
-        createToast(
-          "Chat failed",
-          "error",
-          error instanceof Error ? error.message : "Unexpected local chat error.",
-        ),
-      );
-    } finally {
-      setIsChatting(false);
-    }
-  };
-
-  const panes = [
-    { id: "capture" as const, label: "Capture", icon: NotebookTabs },
-    { id: "chat" as const, label: "Chat", icon: Bot },
-  ];
-
-  const healthBadge = {
-    checking: {
-      dot: "bg-amber-400",
-      pulse: "",
-      label: "Checking engine",
-      text: "text-amber-100",
-      border: "border-amber-400/15 bg-amber-400/10",
-    },
-    online: {
-      dot: "bg-emerald-400",
-      pulse: "animate-pulse",
-      label: "Engine online",
-      text: "text-emerald-100",
-      border: "border-emerald-400/15 bg-emerald-400/10",
-    },
-    offline: {
-      dot: "bg-rose-400",
-      pulse: "",
-      label: "Engine offline",
-      text: "text-rose-100",
-      border: "border-rose-400/15 bg-rose-400/10",
-    },
-  }[healthStatus];
-
+export default function LandingPage() {
   return (
-    <main className="min-h-screen bg-zinc-950 text-zinc-100">
-      <ToastStack toasts={toasts} />
-
-      <div className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.12),transparent_32%),radial-gradient(circle_at_top_right,rgba(56,189,248,0.12),transparent_34%)]" />
-        <div className="absolute inset-0 opacity-[0.08] [background-image:linear-gradient(rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:44px_44px]" />
-
-        <div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-6 sm:px-6 lg:px-8">
-          <header className="mb-6 space-y-5">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-              <div className="space-y-3">
-                <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
-                  Private Second Brain
-                </p>
-                <div className="space-y-2">
-                  <h1 className="text-4xl font-semibold tracking-tight text-zinc-50 sm:text-5xl">
-                    Life OS
-                  </h1>
-                  <p className="max-w-2xl text-sm leading-6 text-zinc-400 sm:text-base">
-                    Draft notes on the left, reason over your local vault on the right, and
-                    keep everything fully offline.
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 px-4 py-3">
-                  <div className="flex items-center gap-2 text-xs uppercase tracking-[0.25em] text-zinc-500">
-                    <Bot className="size-3.5" />
-                    Model
-                  </div>
-                  <p className="mt-2 text-sm font-medium text-zinc-100">llama3.2</p>
-                </div>
-                <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 px-4 py-3">
-                  <div className="flex items-center gap-2 text-xs uppercase tracking-[0.25em] text-zinc-500">
-                    <Database className="size-3.5" />
-                    Embeddings
-                  </div>
-                  <p className="mt-2 text-sm font-medium text-zinc-100">nomic-embed-text</p>
-                </div>
-                <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 px-4 py-3">
-                  <div className={`flex items-center gap-2 rounded-full px-2 py-1 text-xs uppercase tracking-[0.25em] ${healthBadge.border} ${healthBadge.text}`}>
-                    <HardDriveDownload className="size-3.5" />
-                    {healthBadge.label}
-                  </div>
-                  <p className="mt-2 flex items-center gap-2 truncate text-sm font-medium text-zinc-100">
-                    <span className={`h-2.5 w-2.5 rounded-full ${healthBadge.dot} ${healthBadge.pulse}`} />
-                    {API_BASE_URL}
-                  </p>
-                </div>
-              </div>
+    <div className="min-h-screen bg-black text-slate-200 font-sans selection:bg-purple-500/30">
+      <header className="border-b border-white/10 bg-black/50 backdrop-blur-md sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center shadow-[0_0_15px_rgba(147,51,234,0.5)]">
+              <BrainCircuit className="w-5 h-5 text-white" />
             </div>
-
-            <div className="flex gap-2 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-1 lg:hidden">
-              {panes.map((pane) => {
-                const Icon = pane.icon;
-                const active = mobilePane === pane.id;
-
-                return (
-                  <Button
-                    key={pane.id}
-                    type="button"
-                    onClick={() => setMobilePane(pane.id)}
-                    variant={active ? "default" : "ghost"}
-                    className={`flex-1 rounded-xl ${
-                      active
-                        ? "bg-zinc-100 text-zinc-950 hover:bg-zinc-200"
-                        : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
-                    }`}
-                  >
-                    <Icon className="size-4" />
-                    {pane.label}
-                  </Button>
-                );
-              })}
-            </div>
-          </header>
-
-          <section className="grid flex-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.08fr)]">
-            <div className={`${mobilePane === "capture" ? "block" : "hidden"} lg:block`}>
-              <NoteEditor
-                title={title}
-                content={content}
-                isSaving={isSaving}
-                onTitleChange={setTitle}
-                onContentChange={setContent}
-                onSave={handleSave}
-                onToast={pushToast}
-              />
-            </div>
-
-            <div className={`${mobilePane === "chat" ? "block" : "hidden"} lg:block`}>
-              <ChatInterface
-                query={query}
-                messages={messages}
-                isChatting={isChatting}
-                bottomRef={bottomRef}
-                onQueryChange={setQuery}
-                onSubmit={handleChatSubmit}
-                onClearChat={() => setMessages([])}
-              />
-            </div>
-          </section>
+            <span className="text-xl font-bold tracking-tight text-white">SecondBrain <span className="text-purple-400 font-mono text-xs ml-1 border border-purple-500/30 px-1.5 py-0.5 rounded">LOCAL</span></span>
+          </div>
+          <div className="flex items-center gap-6">
+            <Link href="/notes" className="text-sm font-semibold text-slate-400 hover:text-white transition">App</Link>
+            <Link href="https://github.com" className="text-sm font-medium text-slate-400 hover:text-white transition">GitHub</Link>
+            <Link href="/notes" className="px-5 py-2 bg-white text-black rounded-lg text-sm font-bold shadow-sm hover:bg-slate-200 transition">Try Demo</Link>
+          </div>
         </div>
-      </div>
-    </main>
+      </header>
+
+      <main>
+        {/* Hero */}
+        <section className="relative pt-32 pb-24 overflow-hidden">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-purple-900/20 rounded-full blur-[120px] -z-10"></div>
+          
+          <div className="max-w-4xl mx-auto px-4 text-center">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-sm font-medium text-slate-300 mb-8 shadow-inner">
+              <Lock className="w-3.5 h-3.5 text-emerald-400" /> 100% Local. No data leaves your machine.
+            </div>
+            
+            <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight text-white mb-8 leading-[1.1]">
+              Your thoughts, <br/>
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-blue-400">instantly retrievable.</span>
+            </h1>
+            
+            <p className="text-xl text-slate-400 mb-10 max-w-2xl mx-auto leading-relaxed">
+              A private, open-source note-taking app with a built-in Local LLM. Chat with your PDFs, markdown, and ideas without compromising privacy.
+            </p>
+            
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <Link href="/notes" className="px-8 py-4 bg-white text-black rounded-xl text-lg font-bold shadow-[0_0_20px_rgba(255,255,255,0.3)] hover:scale-105 transition-all">
+                Open App <ArrowRight className="inline ml-2 w-5 h-5"/>
+              </Link>
+              <button className="px-8 py-4 bg-slate-900 border border-slate-800 text-white rounded-xl text-lg font-bold hover:bg-slate-800 transition-all">
+                Quick Start Guide
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {/* Features */}
+        <section className="py-24 border-t border-white/5 bg-slate-950/50">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              <div className="bg-slate-900/50 border border-slate-800 p-8 rounded-2xl">
+                <div className="w-12 h-12 bg-slate-800 rounded-xl flex items-center justify-center mb-6">
+                  <ShieldCheck className="w-6 h-6 text-emerald-400" />
+                </div>
+                <h3 className="text-xl font-bold text-white mb-3">Privacy First</h3>
+                <p className="text-slate-400 leading-relaxed">Runs entirely on Ollama or local models. Your personal brain dump stays entirely on your hard drive.</p>
+              </div>
+              
+              <div className="bg-slate-900/50 border border-slate-800 p-8 rounded-2xl">
+                <div className="w-12 h-12 bg-slate-800 rounded-xl flex items-center justify-center mb-6">
+                  <Search className="w-6 h-6 text-blue-400" />
+                </div>
+                <h3 className="text-xl font-bold text-white mb-3">Semantic Search</h3>
+                <p className="text-slate-400 leading-relaxed">Don't remember the exact keyword? Just ask. The integrated vector database finds concepts, not just words.</p>
+              </div>
+              
+              <div className="bg-slate-900/50 border border-slate-800 p-8 rounded-2xl">
+                <div className="w-12 h-12 bg-slate-800 rounded-xl flex items-center justify-center mb-6">
+                  <Zap className="w-6 h-6 text-purple-400" />
+                </div>
+                <h3 className="text-xl font-bold text-white mb-3">Instant Chat</h3>
+                <p className="text-slate-400 leading-relaxed">Select a few documents and spin up a chat. Summarize PDFs or brainstorm ideas using your own context.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
   );
 }

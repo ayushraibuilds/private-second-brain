@@ -1,14 +1,28 @@
 version: '3.8'
 
+networks:
+  second-brain-net:
+    driver: bridge
+
+volumes:
+  vault-data:
+  ollama-data:
+
 services:
   backend:
     build: ./backend
+    networks:
+      - second-brain-net
     ports:
       - "8000:8000"
     volumes:
       - ./vault:/app/vault
+      - vault-data:/app/data
     environment:
+      # Use Groq by default, or point to Ollama: http://ollama:11434
       - GROQ_API_KEY=${GROQ_API_KEY}
+      - LLM_PROVIDER=${LLM_PROVIDER:-groq}
+      - OLLAMA_BASE_URL=http://ollama:11434
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
@@ -17,16 +31,36 @@ services:
       retries: 3
 
   frontend:
-    build: ./frontend
+    build: 
+      context: ./frontend
+      # Enable if using standalone build in Next.js
+      # dockerfile: Dockerfile 
+    networks:
+      - second-brain-net
     ports:
       - "3000:3000"
     environment:
+      # Container-to-container backend call if using SSR
+      - API_URL=http://backend:8000
+      # Browser-to-backend calls
       - NEXT_PUBLIC_API_URL=http://localhost:8000
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000"]
       interval: 30s
       timeout: 10s
       retries: 3
+
+  # Optional Local LLM via Ollama
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   networks:
+  #     - second-brain-net
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama-data:/root/.ollama
+  #   restart: unless-stopped
