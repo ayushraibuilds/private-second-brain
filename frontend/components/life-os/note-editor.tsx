@@ -1,5 +1,5 @@
-import { KeyboardEvent } from "react";
-import { FilePenLine, Sparkles } from "lucide-react";
+import { ChangeEvent, KeyboardEvent, useRef, useState } from "react";
+import { FilePenLine, FileUp, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -12,6 +12,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
+import type { Toast } from "./types";
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 type NoteEditorProps = {
   title: string;
   content: string;
@@ -19,7 +23,21 @@ type NoteEditorProps = {
   onTitleChange: (value: string) => void;
   onContentChange: (value: string) => void;
   onSave: () => void;
+  onToast: (toast: Toast) => void;
 };
+
+function createToast(
+  title: string,
+  tone: Toast["tone"],
+  description?: string,
+): Toast {
+  return {
+    id: crypto.randomUUID(),
+    title,
+    description,
+    tone,
+  };
+}
 
 export function NoteEditor({
   title,
@@ -28,11 +46,79 @@ export function NoteEditor({
   onTitleChange,
   onContentChange,
   onSave,
+  onToast,
 }: NoteEditorProps) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+
   const handleTextareaKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
       event.preventDefault();
       onSave();
+    }
+  };
+
+  const handleUploadClick = () => {
+    if (isUploading) {
+      return;
+    }
+
+    fileInputRef.current?.click();
+  };
+
+  const handleFileUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    setIsUploading(true);
+    onToast(
+      createToast(
+        "Uploading PDF",
+        "info",
+        `${file.name} is being chunked and embedded locally. This can take a few seconds.`,
+      ),
+    );
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/documents/upload`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const payload = (await response.json()) as {
+        file?: string;
+        chunks?: number;
+        detail?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(payload.detail || "Failed to upload PDF.");
+      }
+
+      onToast(
+        createToast(
+          "PDF embedded successfully",
+          "success",
+          `${payload.file ?? file.name} indexed in ${payload.chunks ?? 0} chunk(s).`,
+        ),
+      );
+    } catch (error) {
+      onToast(
+        createToast(
+          "PDF upload failed",
+          "error",
+          error instanceof Error ? error.message : "Unexpected upload error.",
+        ),
+      );
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -50,8 +136,8 @@ export function NoteEditor({
               Shape raw notes into memory.
             </CardTitle>
             <CardDescription className="max-w-xl text-sm leading-6 text-zinc-400">
-              Draft markdown, save it locally, and update embeddings in the same pass.
-              Press <span className="font-medium text-zinc-300">Cmd/Ctrl + Enter</span> to save.
+              Draft markdown, save it locally, or ingest a PDF into the same vault. Press{" "}
+              <span className="font-medium text-zinc-300">Cmd/Ctrl + Enter</span> to save.
             </CardDescription>
           </div>
           <div className="hidden rounded-full border border-emerald-400/15 bg-emerald-400/10 px-3 py-1 text-xs text-emerald-200 sm:flex sm:items-center sm:gap-2">
@@ -77,15 +163,36 @@ export function NoteEditor({
         />
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-xs text-zinc-500">
-            Stored in the local vault and re-embedded into Chroma on save.
+            Stored in the local vault and re-embedded into Chroma on save or upload.
           </div>
-          <Button
-            onClick={onSave}
-            disabled={isSaving || !title.trim() || !content.trim()}
-            className="h-11 rounded-xl bg-emerald-500 px-5 text-zinc-950 hover:bg-emerald-400"
-          >
-            {isSaving ? "Saving..." : "Save to Vault"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/pdf"
+              className="hidden"
+              onChange={handleFileUpload}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={handleUploadClick}
+              disabled={isUploading}
+              className="h-11 w-11 rounded-xl border-zinc-800 bg-zinc-950/70 text-zinc-200 hover:bg-zinc-900"
+              aria-label="Upload PDF"
+              title="Upload PDF"
+            >
+              <FileUp className="size-4" />
+            </Button>
+            <Button
+              onClick={onSave}
+              disabled={isSaving || !title.trim() || !content.trim()}
+              className="h-11 rounded-xl bg-emerald-500 px-5 text-zinc-950 hover:bg-emerald-400"
+            >
+              {isSaving ? "Saving..." : "Save to Vault"}
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>

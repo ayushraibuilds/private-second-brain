@@ -122,6 +122,22 @@ export function ChatInterface({
                   >
                     {message.role === "assistant" ? (
                       <>
+                        {message.agentStatus ? (
+                          <div
+                            className={`mb-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.2em] ${
+                              message.status === "streaming"
+                                ? "border-sky-400/25 bg-sky-400/10 text-sky-200"
+                                : "border-zinc-700 bg-zinc-800/80 text-zinc-300"
+                            }`}
+                          >
+                            <BrainCircuit
+                              className={`size-3.5 ${
+                                message.status === "streaming" ? "animate-pulse" : ""
+                              }`}
+                            />
+                            {message.agentStatus}
+                          </div>
+                        ) : null}
                         <div className="prose prose-invert prose-zinc max-w-none text-sm leading-7 prose-headings:text-zinc-50 prose-p:text-zinc-200 prose-a:text-sky-300 prose-strong:text-zinc-50 prose-code:text-zinc-100 prose-pre:overflow-x-auto prose-pre:rounded-xl prose-pre:border prose-pre:border-zinc-800 prose-pre:bg-black/50">
                           <ReactMarkdown>
                             {message.text || (message.status === "streaming" ? "Thinking..." : "")}

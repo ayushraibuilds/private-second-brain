@@ -17,6 +17,7 @@ type MobilePane = "capture" | "chat";
 type HealthStatus = "checking" | "online" | "offline";
 
 type StreamEvent =
+  | { type: "status"; message: string }
   | { type: "sources"; sources: string[] }
   | { type: "token"; token: string }
   | { type: "done" };
@@ -294,6 +295,16 @@ export default function LifeOSPage() {
             );
           }
 
+          if (eventPayload?.type === "status") {
+            setMessages((current) =>
+              current.map((message) =>
+                message.id === assistantId
+                  ? { ...message, agentStatus: eventPayload.message }
+                  : message,
+              ),
+            );
+          }
+
           if (eventPayload?.type === "token") {
             setMessages((current) =>
               current.map((message) =>
@@ -464,6 +475,7 @@ export default function LifeOSPage() {
                 onTitleChange={setTitle}
                 onContentChange={setContent}
                 onSave={handleSave}
+                onToast={pushToast}
               />
             </div>
 

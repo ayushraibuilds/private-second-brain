@@ -8,6 +8,7 @@ export type ChatMessage = {
   text: string;
   sources?: string[];
   status?: MessageStatus;
+  agentStatus?: string;
 };
 
 export type Toast = {

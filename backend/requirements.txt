@@ -4,3 +4,7 @@ langchain
 langchain-community
 chromadb
 pydantic
+pypdf
+python-multipart
+langgraph
+langchain-ollama
